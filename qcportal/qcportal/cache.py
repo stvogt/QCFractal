@@ -40,6 +40,15 @@ def _msgpack_encode_cache(obj: Any) -> Any:
     # Similar to msgpack_encode in serialization, however
     # does NOT include child records
 
+    # Local patch (BUG_qcportal_cache_overflow, 2026-05-30): msgpack's packer
+    # overflows on ints wider than uint64. Properties from QC backends can
+    # contain numerical-pathology bignums (~10^92 observed) which round-trip
+    # through JSON cleanly but crash the local SQLite cache here. Coerce to
+    # NaN — no physically meaningful property exceeds int64. Remove when
+    # upstream merges the fix.
+    if isinstance(obj, int) and not (-(1 << 63) <= obj <= (1 << 63) - 1):
+        return float("nan")
+
     # Importing BaseRecord is a circular dependency :(
     if hasattr(obj, "get_cache_dict"):
         return obj.get_cache_dict(exclude_unset=True, by_alias=True)
